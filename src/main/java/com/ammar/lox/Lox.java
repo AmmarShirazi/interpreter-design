@@ -29,12 +29,16 @@ public class Lox {
 
         System.out.println(new AstPrinter().print(expression));*/
 
-        //Util.GenerateAst.run("C:\\Users\\syeda\\Desktop\\interpreter-design\\lox\\src\\main\\java\\com\\ammar\\lox");
+        // Util.GenerateAst.run("C:\\Users\\syeda\\Desktop\\interpreter-design\\src\\main\\java\\com\\ammar\\lox");
 
         if (args.length > 1) {
             System.out.println("Usage: jlox [script]");
             System.exit(64);
         } else if (args.length == 1) {
+            if (!args[0].endsWith(".lox")) {
+                System.out.println("Unrecognized File Type: jlox [filename].lox");
+                System.exit(64);
+            }
             runFile(args[0]);
         } else {
             runPrompt();
@@ -45,20 +49,20 @@ public class Lox {
         Scanner scanner = new Scanner(source);
         List<Token> tokens = scanner.scanTokens();
 
-/*        // For now, just print the tokens.
+/*      // For now, just print the tokens.
         for (Token token : tokens) {
             System.out.println(token);
         }*/
 
         Parser parser = new Parser(tokens);
-        Expr expression = parser.parse();
+        List<Stmt> statements = parser.parse();
 
         // Stop if there was a syntax error.
         if (hadError) {
             return;
         }
 
-        interpreter.interpret(expression);
+        interpreter.interpret(statements);
     }
 
     private static void runPrompt() throws IOException {

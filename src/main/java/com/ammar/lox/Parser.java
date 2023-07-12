@@ -1,23 +1,33 @@
 package com.ammar.lox;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.ammar.lox.TokenType.*;
 
 /*
-* CFG USED FOR RECURSIVE DESCENT PARSING:
-* expression     → literal
-               | unary
-               | binary
-               | grouping ;
+*** CFG USED FOR RECURSIVE DESCENT PARSING EXPRESSIONS:
+expression     → equality ;
+equality       → comparison ( ( "!=" | "==" ) comparison )* ;
+comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+term           → factor ( ( "-" | "+" ) factor )* ;
+factor         → unary ( ( "/" | "*" ) unary )* ;
+unary          → ( "!" | "-" ) unary
+               | primary ;
+primary        → NUMBER | STRING | "true" | "false" | "nil"
+               | "(" expression ")" ;
 
-literal        → NUMBER | STRING | "true" | "false" | "nil" ;
-grouping       → "(" expression ")" ;
-unary          → ( "-" | "!" ) expression ;
-binary         → expression operator expression ;
-operator       → "==" | "!=" | "<" | "<=" | ">" | ">="
-               | "+"  | "-"  | "*" | "/" ;
-* */
+
+*** STATEMENTS CFG:
+    program        → statement* EOF ;
+
+    statement      → exprStmt
+                   | printStmt ;
+
+    exprStmt       → expression ";" ;
+    printStmt      → "print" expression ";" ;
+*/
+
 
 class Parser {
     private static class ParseError extends RuntimeException {}
@@ -26,20 +36,97 @@ class Parser {
 
     private int current = 0;
 
-    Expr parse() {
+    Parser(List<Token> tokens) {
+        this.tokens = tokens;
+    }
+    private Stmt declaration() {
         try {
-            return expression();
+            if (match(VAR)) {
+                return varDeclaration();}
+            return statement();
         } catch (ParseError error) {
+            synchronize();
             return null;
         }
     }
 
-    Parser(List<Token> tokens) {
-        this.tokens = tokens;
+    List<Stmt> parse() {
+        List<Stmt> statements = new ArrayList<>();
+        while (!isAtEnd()) {
+            statements.add(declaration());
+        }
+
+        return statements;
     }
 
+    private Stmt varDeclaration() {
+        Token name = consume(IDENTIFIER, "Expect variable name.");
+
+        Expr initializer = null;
+        if (match(EQUAL)) {
+            initializer = expression();
+        }
+
+        consume(SEMICOLON, "Expect ';' after variable declaration.");
+        return new Stmt.Var(name, initializer);
+    }
+
+    private Stmt statement() {
+        if (match(PRINT)){
+            return printStatement();
+        }
+
+        if (match(LEFT_BRACE)) {
+            return new Stmt.Block(block());
+        }
+
+        return expressionStatement();
+    }
+    private Stmt printStatement() {
+        Expr value = expression();
+        consume(SEMICOLON, "Expect ';' after value.");
+        return new Stmt.Print(value);
+    }
+
+    private Stmt expressionStatement() {
+        Expr expr = expression();
+        consume(SEMICOLON, "Expect ';' after expression.");
+        return new Stmt.Expression(expr);
+    }
+
+    private List<Stmt> block() {
+        List<Stmt> statements = new ArrayList<>();
+
+        while (!check(RIGHT_BRACE) && !isAtEnd()) {
+            statements.add(declaration());
+        }
+
+        consume(RIGHT_BRACE, "Expect '}' after block.");
+        return statements;
+    }
+
+
+
     private Expr expression() {
-        return equality();
+        return assignment();
+    }
+
+    private Expr assignment() {
+        Expr expr = equality();
+
+        if (match(EQUAL)) {
+            Token equals = previous();
+            Expr value = assignment();
+
+            if (expr instanceof Expr.Variable) {
+                Token name = ((Expr.Variable)expr).name;
+                return new Expr.Assign(name, value);
+            }
+
+            error(equals, "Invalid assignment target.");
+        }
+
+        return expr;
     }
 
     private Expr equality() {
@@ -61,6 +148,10 @@ class Parser {
 
         if (match(NUMBER, STRING)) {
             return new Expr.Literal(previous().literal);
+        }
+
+        if (match(IDENTIFIER)) {
+            return new Expr.Variable(previous());
         }
 
         if (match(LEFT_PAREN)) {
